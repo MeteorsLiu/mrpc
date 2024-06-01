@@ -17,6 +17,13 @@ func NewCondQueue[T any]() *CondQueue[T] {
 	}
 }
 
+func (n *CondQueue[T]) Len() int {
+	n.cond.L.Lock()
+	l := n.buffers.Len()
+	n.cond.L.Unlock()
+	return l
+}
+
 func (n *CondQueue[T]) Push(value T) {
 	n.cond.L.Lock()
 	if n.closed {

@@ -217,6 +217,11 @@ func (b *BaseConn) Write(buf []byte) (n int, err error) {
 		err = net.ErrClosed
 		return
 	}
+	if b.writePending.Len() > 0 {
+		// guarantee writing order
+		b.writePending.Push(buffer.NewPendingBuffer(buf))
+		return
+	}
 	n, err = b.rawWrite(buf)
 	if err == syscall.EAGAIN && len(buf) > n {
 		b.writePending.Push(buffer.NewPendingBuffer(buf[n:]))
