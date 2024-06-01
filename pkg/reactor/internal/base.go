@@ -74,64 +74,22 @@ func (b *BaseConn) FD() int {
 	return b.fd
 }
 
-func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
-	nextRead := int(b.nextMinRead.Load())
-	if nextRead == 0 || b.pinBuffer == nil {
-		return 0, false
-	}
-	if nextRead > len(buf) {
-		b.pinBuffer.Write(buf)
-		return 0, false
-	}
-	n, _ := b.pinBuffer.Write(buf[:nextRead])
-	return n, true
+func (b *BaseConn) releasePinBuffer() {
+	buffer.PutPinBuffer(b.pinBuffer)
+	b.pinBuffer = nil
 }
 
-func (b *BaseConn) OnRead(buf []byte, err error) {
-	b.fdMu.RLock()
-	defer b.fdMu.RUnlock()
-	if n, ok := b.tryReadPinBuffer(buf); ok {
-		b.onread(b, b.pinBuffer.Bytes(), err)
-		b.resetNextRead()
-		buf = buf[n:]
+func (b *BaseConn) resetNextRead() {
+	if n := b.nextMinRead.Swap(0); n > 0 {
+		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, 1)
+		b.releasePinBuffer()
 	}
-	if b.pinBuffer != nil || len(buf) == 0 {
-		return
-	}
-	if b.closed {
-		b.onread(b, buf, net.ErrClosed)
-		return
-	}
-	b.onread(b, buf, err)
-
-	if b.nextMinRead.Load() > 0 {
-		b.pinBuffer = buffer.GetPinBuffer()
-		b.pinBuffer.Write(buf)
-	}
-}
-
-func (b *BaseConn) OnDisconnect(buf []byte, err error) {
-	b.fdMu.RLock()
-	defer b.fdMu.RUnlock()
-	if b.closed {
-		b.ondisconnect(b, buf, net.ErrClosed)
-		return
-	}
-	b.ondisconnect(b, buf, err)
 }
 
 func (b *BaseConn) SetNextReadSize(n int) {
 	if n > 0 {
 		b.nextMinRead.Store(int32(n))
 		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, n)
-	}
-}
-
-func (b *BaseConn) resetNextRead() {
-	if n := b.nextMinRead.Swap(0); n > 0 {
-		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, 1)
-		buffer.PutPinBuffer(b.pinBuffer)
-		b.pinBuffer = nil
 	}
 }
 
@@ -180,11 +138,12 @@ func (b *BaseConn) writeAllPending() {
 		if len(pb.Bytes()) > n && err == nil {
 			// will this cause?
 			// retry
+			pb.SetPos(n)
 			goto retry
 		}
 		pb.Release(n, err)
 		return true
-	}) ,,
+	})
 }
 
 func (b *BaseConn) releasePending() {
@@ -193,6 +152,54 @@ func (b *BaseConn) releasePending() {
 		pb.Release(0, net.ErrClosed)
 		return true
 	})
+}
+
+func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
+	nextRead := int(b.nextMinRead.Load())
+	if nextRead == 0 || b.pinBuffer == nil {
+		return 0, false
+	}
+	if nextRead > len(buf) {
+		b.pinBuffer.Write(buf)
+		return 0, false
+	}
+	n, _ := b.pinBuffer.Write(buf[:nextRead])
+	return n, true
+}
+
+func (b *BaseConn) OnRead(buf []byte, err error) {
+	b.fdMu.RLock()
+	defer b.fdMu.RUnlock()
+	if n, ok := b.tryReadPinBuffer(buf); ok {
+		b.onread(b, b.pinBuffer.Bytes(), err)
+		b.resetNextRead()
+		buf = buf[n:]
+	}
+	if b.pinBuffer != nil || len(buf) == 0 {
+		return
+	}
+	if b.closed {
+		b.onread(b, buf, net.ErrClosed)
+		return
+	}
+	b.onread(b, buf, err)
+
+	if b.nextMinRead.Load() > 0 {
+		b.pinBuffer = buffer.GetPinBuffer()
+		b.pinBuffer.Write(buf)
+	}
+}
+
+func (b *BaseConn) OnDisconnect(buf []byte, err error) {
+	b.fdMu.RLock()
+	defer b.fdMu.RUnlock()
+	if b.pinBuffer != nil {
+		buf = b.pinBuffer.Bytes()
+		defer b.releasePinBuffer()
+	}
+	if !b.closed {
+		b.ondisconnect(b, buf, err)
+	}
 }
 
 // Read reads data from the connection.
