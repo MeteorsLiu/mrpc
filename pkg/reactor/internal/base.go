@@ -24,13 +24,15 @@ type BaseConn struct {
 	pd   reactor.Poller
 	fdMu sync.RWMutex
 
-	closed      bool
+	closed       bool
+	laddr, raddr net.Addr
+
 	pinBuffer   *bytes.Buffer
 	nextMinRead atomic.Int32
 
-	writePending *condqueue.CondQueue[*buffer.PendingBuffer]
-
 	onread, ondisconnect reactor.Reactor
+
+	writePending *condqueue.CondQueue[*buffer.PendingBuffer]
 }
 
 func defaultOnAction(_ reactor.Conn, _ []byte, _ error) {}
@@ -52,6 +54,7 @@ func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) 
 		return nil, err
 	}
 	b.setFD(newFd)
+	b.setAddr(conn)
 
 	runtime.SetFinalizer(b, (*BaseConn).Close)
 
@@ -60,6 +63,15 @@ func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) 
 		return nil, err
 	}
 	return b, nil
+}
+
+func (b *BaseConn) setAddr(conn io.ReadWriteCloser) {
+	cn, ok := conn.(net.Conn)
+	if !ok {
+		return
+	}
+	b.raddr = cn.RemoteAddr()
+	b.laddr = cn.LocalAddr()
 }
 
 func (b *BaseConn) setFD(fd int) {
@@ -160,7 +172,8 @@ func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
 		return 0, false
 	}
 	if nextRead > len(buf) {
-		b.pinBuffer.Write(buf)
+		n, _ := b.pinBuffer.Write(buf)
+		b.nextMinRead.Add(-int32(n))
 		return 0, false
 	}
 	n, _ := b.pinBuffer.Write(buf[:nextRead])
@@ -202,11 +215,9 @@ func (b *BaseConn) OnDisconnect(buf []byte, err error) {
 	}
 }
 
-// Read reads data from the connection.
-// Read can be made to time out and return an error after a fixed
-// time limit; see SetDeadline and SetReadDeadline.
+// Unimplemented
 func (b *BaseConn) Read(buf []byte) (n int, err error) {
-
+	return 0, reactor.ErrProtocolUnsupport
 }
 
 // Write writes data to the connection.
@@ -250,12 +261,12 @@ func (b *BaseConn) Close() error {
 
 // LocalAddr returns the local network address, if known.
 func (b *BaseConn) LocalAddr() net.Addr {
-
+	return b.laddr
 }
 
 // RemoteAddr returns the remote network address, if known.
 func (b *BaseConn) RemoteAddr() net.Addr {
-
+	return b.raddr
 }
 
 // SetDeadline sets the read and write deadlines associated
