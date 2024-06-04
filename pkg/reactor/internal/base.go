@@ -61,7 +61,7 @@ func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) 
 		b.Close()
 		return nil, err
 	}
-	log.Println("inited")
+	log.Println("inited", b.fd)
 
 	return b, nil
 }
