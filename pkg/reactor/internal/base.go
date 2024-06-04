@@ -7,12 +7,11 @@ import (
 	"io"
 	"net"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/MeteorsLiu/mrpc/pkg/condqueue"
+	"github.com/MeteorsLiu/mrpc/pkg/queue"
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
 	"github.com/MeteorsLiu/mrpc/pkg/reactor/internal/buffer"
 	"github.com/MeteorsLiu/mrpc/pkg/reactor/internal/dup"
@@ -20,9 +19,8 @@ import (
 )
 
 type BaseConn struct {
-	fd   int
-	pd   reactor.Poller
-	fdMu sync.RWMutex
+	fd int
+	pd reactor.Poller
 
 	closed       bool
 	laddr, raddr net.Addr
@@ -32,7 +30,7 @@ type BaseConn struct {
 
 	onread, ondisconnect reactor.Reactor
 
-	writePending *condqueue.CondQueue[*buffer.PendingBuffer]
+	writePending *queue.Queue[*buffer.PendingBuffer]
 }
 
 func defaultOnAction(_ reactor.Conn, _ []byte, _ error) {}
@@ -47,7 +45,7 @@ func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) 
 	b := &BaseConn{
 		onread:       onread,
 		ondisconnect: ondisconnect,
-		writePending: condqueue.NewCondQueue[*buffer.PendingBuffer](),
+		writePending: queue.New[*buffer.PendingBuffer](),
 	}
 	newFd, err := dup.DupConn(conn)
 	if err != nil {
@@ -86,9 +84,18 @@ func (b *BaseConn) FD() int {
 	return b.fd
 }
 
+func (b *BaseConn) eofError(err error) error {
+	if b.closed {
+		return net.ErrClosed
+	}
+	return err
+}
+
 func (b *BaseConn) releasePinBuffer() {
-	buffer.PutPinBuffer(b.pinBuffer)
-	b.pinBuffer = nil
+	if b.pinBuffer != nil {
+		buffer.PutPinBuffer(b.pinBuffer)
+		b.pinBuffer = nil
+	}
 }
 
 func (b *BaseConn) resetNextRead() {
@@ -135,23 +142,25 @@ func (b *BaseConn) rawWrite(buf []byte) (n int, err error) {
 }
 
 func (b *BaseConn) writeAllPending() {
-	b.fdMu.RLock()
-	defer b.fdMu.RUnlock()
 	if b.closed {
 		return
 	}
 	b.writePending.ForEach(func(pb *buffer.PendingBuffer) bool {
 	retry:
 		n, err := b.rawWrite(pb.Bytes())
-		if err == syscall.EAGAIN && len(pb.Bytes()) > n {
-			pb.SetPos(n)
+		if err == syscall.EAGAIN && pb.Size() > n {
+			pb.Consume(n)
 			return false
 		}
-		if len(pb.Bytes()) > n && err == nil {
+		if pb.Size() > n && err == nil {
 			// will this cause?
 			// retry
-			pb.SetPos(n)
+			pb.Consume(n)
 			goto retry
+		}
+		// n == size, but with EAGAIN.
+		if err == syscall.EAGAIN {
+			err = nil
 		}
 		pb.Release(n, err)
 		return true
@@ -181,8 +190,6 @@ func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
 }
 
 func (b *BaseConn) OnRead(buf []byte, err error) {
-	b.fdMu.RLock()
-	defer b.fdMu.RUnlock()
 	if n, ok := b.tryReadPinBuffer(buf); ok {
 		b.onread(b, b.pinBuffer.Bytes(), err)
 		b.resetNextRead()
@@ -191,11 +198,7 @@ func (b *BaseConn) OnRead(buf []byte, err error) {
 	if b.pinBuffer != nil || len(buf) == 0 {
 		return
 	}
-	if b.closed {
-		b.onread(b, buf, net.ErrClosed)
-		return
-	}
-	b.onread(b, buf, err)
+	b.onread(b, buf, b.eofError(err))
 
 	if b.nextMinRead.Load() > 0 {
 		b.pinBuffer = buffer.GetPinBuffer()
@@ -204,8 +207,6 @@ func (b *BaseConn) OnRead(buf []byte, err error) {
 }
 
 func (b *BaseConn) OnDisconnect(buf []byte, err error) {
-	b.fdMu.RLock()
-	defer b.fdMu.RUnlock()
 	if b.pinBuffer != nil {
 		buf = b.pinBuffer.Bytes()
 		defer b.releasePinBuffer()
@@ -213,6 +214,7 @@ func (b *BaseConn) OnDisconnect(buf []byte, err error) {
 	if !b.closed {
 		b.ondisconnect(b, buf, err)
 	}
+	b.Close()
 }
 
 // Unimplemented
@@ -243,13 +245,12 @@ func (b *BaseConn) Write(buf []byte) (n int, err error) {
 // Close closes the connection.
 // Any blocked Read or Write operations will be unblocked and return errors.
 func (b *BaseConn) Close() error {
-	b.fdMu.Lock()
-	defer b.fdMu.Unlock()
 	if b.closed {
 		return net.ErrClosed
 	}
-	b.releasePending()
 	var err error
+
+	b.releasePending()
 	runtime.SetFinalizer(b, nil)
 	if b.pd != nil {
 		err = b.pd.Close(b)
@@ -291,14 +292,14 @@ func (b *BaseConn) RemoteAddr() net.Addr {
 //
 // A zero value for t means I/O operations will not time out.
 func (b *BaseConn) SetDeadline(t time.Time) error {
-
+	return nil
 }
 
 // SetReadDeadline sets the deadline for future Read calls
 // and any currently-blocked Read call.
 // A zero value for t means Read will not time out.
 func (b *BaseConn) SetReadDeadline(t time.Time) error {
-
+	return nil
 }
 
 // SetWriteDeadline sets the deadline for future Write calls
@@ -307,5 +308,5 @@ func (b *BaseConn) SetReadDeadline(t time.Time) error {
 // some of the data was successfully written.
 // A zero value for t means Write will not time out.
 func (b *BaseConn) SetWriteDeadline(t time.Time) error {
-
+	return nil
 }

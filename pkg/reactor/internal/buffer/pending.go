@@ -23,16 +23,28 @@ func NewPendingBuffer(buf []byte) *PendingBuffer {
 	pb := &PendingBuffer{
 		wake: make(chan *result, 1),
 	}
-	pb.buf = mempool.Get(len(buf))
-	copy(pb.buf.B, buf)
+	if len(buf) > 0 {
+		pb.buf = mempool.Get(len(buf))
+		copy(pb.buf.B, buf)
+	}
 	return pb
 }
 
-func (pb *PendingBuffer) SetPos(n int) {
-	pb.pos += n
+func (pb *PendingBuffer) IsDone() bool {
+	return pb.pos >= len(pb.buf.B)
+}
+
+func (pb *PendingBuffer) Consume(n int) {
+	if pb.buf != nil && n > 0 {
+		// bound check
+		pb.pos = min(pb.pos+n, len(pb.buf.B))
+	}
 }
 
 func (pb *PendingBuffer) Bytes() []byte {
+	if pb.buf == nil {
+		return nil
+	}
 	return pb.buf.B[pb.pos:]
 }
 
@@ -41,11 +53,17 @@ func (pb *PendingBuffer) Wait() (int, error) {
 	return ret.n, ret.err
 }
 
+func (pb *PendingBuffer) Size() int {
+	return len(pb.Bytes())
+}
+
 func (pb *PendingBuffer) Release(n int, err error) {
 	select {
 	case pb.wake <- newResult(n, err):
 	default:
 	}
-	mempool.Put(pb.buf)
-	pb.buf = nil
+	if pb.buf != nil {
+		mempool.Put(pb.buf)
+		pb.buf = nil
+	}
 }
