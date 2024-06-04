@@ -75,13 +75,21 @@ func (p *epoll) Open(r reactor.Conn) error {
 	ev.Events = syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | unix.EPOLLET
 	*(**pollDesc)(unsafe.Pointer(&ev.Data)) = &pollDesc{pointer: bc}
 	bc.SetPoller(p)
-	return EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, r.FD(), &ev)
+	err := EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, r.FD(), &ev)
+	if err == 0 {
+		return nil
+	}
+	return err
 }
 
 func (p *epoll) Close(r reactor.Conn) error {
 	var ev EpollEvent
 	r.SetPoller(nil)
-	return EpollCtl(p.epfd, syscall.EPOLL_CTL_DEL, r.FD(), &ev)
+	err := EpollCtl(p.epfd, syscall.EPOLL_CTL_DEL, r.FD(), &ev)
+	if err == 0 {
+		return nil
+	}
+	return err
 }
 
 func (p *epoll) run() {
@@ -113,7 +121,7 @@ func (p *epoll) run() {
 			}
 
 			if ev.Events&syscall.EPOLLOUT != 0 {
-				//	conn.writeAllPending()
+				conn.writeAllPending()
 			}
 
 			if ev.Events&(syscall.EPOLLRDHUP|syscall.EPOLLHUP|syscall.EPOLLERR) != 0 {
