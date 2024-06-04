@@ -24,7 +24,7 @@ func DupConn(cn io.ReadWriteCloser) (newFD int, err error) {
 	})
 	if err == nil {
 		syscall.CloseOnExec(newFD)
-		//syscall.SetNonblock(newFD, true)
+		syscall.SetNonblock(newFD, true)
 		cn.Close()
 	}
 	return
