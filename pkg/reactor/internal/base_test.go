@@ -58,7 +58,6 @@ func TestBase(t *testing.T) {
 	}
 	wg.Add(1)
 	_, err = NewBaseConn(cn, onRead, func(c reactor.Conn, b []byte, err error) {
-
 		wg.Done()
 	})
 	if err != nil {

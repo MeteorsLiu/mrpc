@@ -4,6 +4,7 @@ package dup
 
 import (
 	"io"
+	"log"
 	"syscall"
 
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
@@ -21,6 +22,7 @@ func DupConn(cn io.ReadWriteCloser) (newFD int, err error) {
 	}
 	ctl.Control(func(fd uintptr) {
 		newFD, err = syscall.Dup(int(fd))
+		log.Println(newFD, fd)
 	})
 	if err == nil {
 		syscall.CloseOnExec(newFD)

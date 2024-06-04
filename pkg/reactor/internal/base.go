@@ -5,7 +5,6 @@ package internal
 import (
 	"bytes"
 	"io"
-	"log"
 	"net"
 	"runtime"
 	"sync/atomic"
@@ -61,7 +60,6 @@ func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) 
 		b.Close()
 		return nil, err
 	}
-	log.Println("inited", b.fd)
 
 	return b, nil
 }
