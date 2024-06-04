@@ -59,12 +59,12 @@ func TestBaseRead(t *testing.T) {
 			return
 		}
 		if !hello && string(b) != "Hello" {
-			t.Errorf("Read Misbehave: %s want: Hello", string(b))
+			t.Errorf("Read Misbehave: %s %d want: Hello", string(b), len(b))
 			return
 		}
 		hello = true
 		if string(b) != "World" {
-			t.Errorf("Read Misbehave: %s want: World", string(b))
+			t.Errorf("Read Misbehave:  %s %d  want: World", string(b), len(b))
 			return
 		}
 
