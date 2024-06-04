@@ -1,8 +1,6 @@
 package queue
 
 import (
-	"fmt"
-
 	"github.com/MeteorsLiu/mrpc/pkg/queue/internal"
 )
 
@@ -34,16 +32,12 @@ func (n *Queue[T]) Close() {
 }
 
 func (n *Queue[T]) ForEach(fn func(T) bool) {
-	if n.buffers == nil {
-		fmt.Println("empty")
-		return
-	}
 	var next *internal.Element[T]
 	for e := n.buffers.Front(); e != nil; e = next {
 		next = e.Next()
 		if !fn(e.Value) {
 			break
 		}
-		n.buffers.Remove(e)
+		//n.buffers.Remove(e)
 	}
 }
