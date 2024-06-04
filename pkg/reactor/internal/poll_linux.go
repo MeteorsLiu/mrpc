@@ -3,7 +3,6 @@
 package internal
 
 import (
-	"log"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -118,13 +117,11 @@ func (p *epoll) run() {
 				n, er := conn.rawRead(p.buf)
 				if er == nil {
 					conn.OnRead(p.buf[:n], er)
-				} else {
-					log.Println(er, conn.FD())
 				}
 			}
 
 			if ev.Events&syscall.EPOLLOUT != 0 {
-				//conn.writeAllPending()
+				conn.writeAllPending()
 			}
 
 			if ev.Events&(syscall.EPOLLRDHUP|syscall.EPOLLHUP|syscall.EPOLLERR) != 0 {
