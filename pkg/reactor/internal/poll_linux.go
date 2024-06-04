@@ -113,7 +113,7 @@ func (p *epoll) run() {
 			}
 
 			if ev.Events&syscall.EPOLLOUT != 0 {
-				conn.writeAllPending()
+				//	conn.writeAllPending()
 			}
 
 			if ev.Events&(syscall.EPOLLRDHUP|syscall.EPOLLHUP|syscall.EPOLLERR) != 0 {
