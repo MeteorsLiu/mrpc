@@ -117,7 +117,9 @@ func (p *epoll) run() {
 			var er error
 			if ev.Events&syscall.EPOLLIN != 0 {
 				n, er := conn.rawRead(p.buf)
-				conn.OnRead(p.buf[:n], er)
+				if er == nil {
+					conn.OnRead(p.buf[:n], er)
+				}
 			}
 
 			if ev.Events&syscall.EPOLLOUT != 0 {
