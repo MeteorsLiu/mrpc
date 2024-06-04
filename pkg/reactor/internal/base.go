@@ -142,7 +142,7 @@ func (b *BaseConn) rawWrite(buf []byte) (n int, err error) {
 }
 
 func (b *BaseConn) writeAllPending() {
-	if b.closed {
+	if b.closed || b.writePending.Len() == 0 {
 		return
 	}
 	b.writePending.ForEach(func(pb *buffer.PendingBuffer) bool {
