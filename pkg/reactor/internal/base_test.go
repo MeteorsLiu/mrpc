@@ -31,6 +31,7 @@ func newListener(wg *sync.WaitGroup) {
 				conn.Write([]byte{s})
 				time.Sleep(1 * time.Second)
 			}
+			conn.Write([]byte("World"))
 			conn.Close()
 		}(c)
 	}
