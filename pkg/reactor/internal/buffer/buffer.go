@@ -3,14 +3,12 @@ package buffer
 import (
 	"bytes"
 	"sync"
-
-	"github.com/MeteorsLiu/mrpc/pkg/reactor"
 )
 
 var (
 	pinBuffersPool = sync.Pool{
 		New: func() any {
-			return bytes.NewBuffer(make([]byte, reactor.MaxPacketSize))
+			return new(bytes.Buffer)
 		},
 	}
 )
