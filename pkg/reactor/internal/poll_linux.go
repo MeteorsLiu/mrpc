@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"os"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -79,7 +80,7 @@ func (p *epoll) Open(r reactor.Conn) error {
 	if err == 0 {
 		return nil
 	}
-	return err
+	return os.NewSyscallError("EpollCtl", err)
 }
 
 func (p *epoll) Close(r reactor.Conn) error {
@@ -89,7 +90,7 @@ func (p *epoll) Close(r reactor.Conn) error {
 	if err == 0 {
 		return nil
 	}
-	return err
+	return os.NewSyscallError("EpollCtl", err)
 }
 
 func (p *epoll) run() {

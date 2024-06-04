@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -26,7 +25,7 @@ type BaseConn struct {
 	laddr, raddr net.Addr
 
 	pinBuffer   *bytes.Buffer
-	nextMinRead atomic.Int32
+	nextMinRead int
 
 	onread, ondisconnect reactor.Reactor
 
@@ -100,7 +99,9 @@ func (b *BaseConn) releasePinBuffer() {
 }
 
 func (b *BaseConn) resetNextRead() {
-	if n := b.nextMinRead.Swap(0); n > 0 {
+	n := b.nextMinRead
+	b.nextMinRead = 0
+	if n > 0 {
 		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, 1)
 		b.releasePinBuffer()
 	}
@@ -108,7 +109,7 @@ func (b *BaseConn) resetNextRead() {
 
 func (b *BaseConn) SetNextReadSize(n int) {
 	if n > 0 {
-		b.nextMinRead.Store(int32(n))
+		b.nextMinRead = n
 		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, n)
 	}
 }
@@ -177,13 +178,13 @@ func (b *BaseConn) releasePending() {
 }
 
 func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
-	nextRead := int(b.nextMinRead.Load())
+	nextRead := b.nextMinRead
 	if nextRead == 0 || b.pinBuffer == nil {
 		return 0, false
 	}
 	if nextRead > len(buf) {
 		n, _ := b.pinBuffer.Write(buf)
-		b.nextMinRead.Add(-int32(n))
+		b.nextMinRead -= n
 		return 0, false
 	}
 	n, _ := b.pinBuffer.Write(buf[:nextRead])
@@ -201,7 +202,7 @@ func (b *BaseConn) OnRead(buf []byte, err error) {
 	}
 	b.onread(b, buf, b.eofError(err))
 
-	if b.nextMinRead.Load() > 0 {
+	if b.nextMinRead > 0 {
 		b.pinBuffer = buffer.GetPinBuffer()
 		b.pinBuffer.Write(buf)
 	}

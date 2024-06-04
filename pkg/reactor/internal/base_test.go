@@ -39,16 +39,7 @@ func newListener(wg *sync.WaitGroup, handle func(net.Conn)) {
 	}
 }
 
-func onRead(c reactor.Conn, b []byte, err error) {
-	log.Println("recv: ", string(b))
-	if len(b) < 5 {
-		c.SetNextReadSize(5 - len(b))
-		return
-	}
-
-}
-
-func TestBase(t *testing.T) {
+func TestBaseRead(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go newListener(&wg, helloWorldTest)
@@ -59,8 +50,25 @@ func TestBase(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	hello := false
 	wg.Add(1)
-	_, err = NewBaseConn(cn, onRead, func(c reactor.Conn, b []byte, err error) {
+	_, err = NewBaseConn(cn, func(c reactor.Conn, b []byte, err error) {
+		//log.Println("recv: ", string(b))
+		if len(b) < 5 {
+			c.SetNextReadSize(5 - len(b))
+			return
+		}
+		if !hello && string(b) != "Hello" {
+			t.Errorf("Read Misbehave: %s want: Hello", string(b))
+			return
+		}
+		hello = true
+		if string(b) != "World" {
+			t.Errorf("Read Misbehave: %s want: World", string(b))
+			return
+		}
+
+	}, func(c reactor.Conn, b []byte, err error) {
 		wg.Done()
 	})
 	if err != nil {
