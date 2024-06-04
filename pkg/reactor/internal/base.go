@@ -4,6 +4,7 @@ package internal
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"runtime"
@@ -60,6 +61,8 @@ func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) 
 		b.Close()
 		return nil, err
 	}
+
+	fmt.Println(b.writePending == nil)
 	return b, nil
 }
 
