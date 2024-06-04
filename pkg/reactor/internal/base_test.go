@@ -12,7 +12,18 @@ import (
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
 )
 
-func newListener(wg *sync.WaitGroup) {
+func helloWorldTest(conn net.Conn) {
+	toSend := []byte("Hello")
+
+	for _, s := range toSend {
+		conn.Write([]byte{s})
+		time.Sleep(1 * time.Second)
+	}
+	conn.Write([]byte("World"))
+	conn.Close()
+}
+
+func newListener(wg *sync.WaitGroup, handle func(net.Conn)) {
 	l, err := net.Listen("tcp", "127.0.0.1:9999")
 	if err != nil {
 		log.Fatal(err)
@@ -24,16 +35,7 @@ func newListener(wg *sync.WaitGroup) {
 		if err != nil {
 			return
 		}
-		go func(conn net.Conn) {
-			toSend := []byte("Hello")
-
-			for _, s := range toSend {
-				conn.Write([]byte{s})
-				time.Sleep(1 * time.Second)
-			}
-			conn.Write([]byte("World"))
-			conn.Close()
-		}(c)
+		go handle(c)
 	}
 }
 
@@ -49,7 +51,7 @@ func onRead(c reactor.Conn, b []byte, err error) {
 func TestBase(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go newListener(&wg)
+	go newListener(&wg, helloWorldTest)
 	wg.Wait()
 
 	cn, err := net.Dial("tcp", "127.0.0.1:9999")
