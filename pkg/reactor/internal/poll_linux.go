@@ -121,7 +121,7 @@ func (p *epoll) run() {
 				if er == nil {
 					conn.OnRead(p.buf[:n], er)
 				} else {
-					log.Println(er)
+					log.Println(er, conn.FD())
 				}
 			}
 
