@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"log"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -119,6 +120,8 @@ func (p *epoll) run() {
 				n, er := conn.rawRead(p.buf)
 				if er == nil {
 					conn.OnRead(p.buf[:n], er)
+				} else {
+					log.Println(er)
 				}
 			}
 
