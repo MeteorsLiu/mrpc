@@ -74,7 +74,7 @@ func (p *epoll) Open(r reactor.Conn) error {
 	}
 	var ev EpollEvent
 	ev.Events = syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | unix.EPOLLET
-	*(**pollDesc)(unsafe.Pointer(&ev.Data)) = &pollDesc{pointer: bc}
+	*(**pollDesc)(unsafe.Pointer(&ev.Data)) = &pollDesc{Pointer: bc}
 	bc.SetPoller(p)
 	err := EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, r.FD(), &ev)
 	if err == 0 {
@@ -110,7 +110,7 @@ func (p *epoll) run() {
 		for i := 0; i < n; i++ {
 			ev := events[i]
 			tp := *(*pollDesc)(unsafe.Pointer(&ev.Data))
-			conn := tp.pointer
+			conn := tp.Pointer
 
 			// Order: If there's something to read, read it.
 			// Then, write all the pending buffers.

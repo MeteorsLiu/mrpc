@@ -1,5 +1,5 @@
 package internal
 
 type pollDesc struct {
-	pointer *BaseConn
+	Pointer *BaseConn
 }
