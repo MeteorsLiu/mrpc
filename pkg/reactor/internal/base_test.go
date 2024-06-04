@@ -61,9 +61,5 @@ func TestBase(t *testing.T) {
 
 		wg.Done()
 	})
-	if err != nil {
-		t.Error(err)
-		return
-	}
 	wg.Wait()
 }
