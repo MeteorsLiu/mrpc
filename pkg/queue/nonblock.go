@@ -1,6 +1,10 @@
 package queue
 
-import "github.com/MeteorsLiu/mrpc/pkg/queue/internal"
+import (
+	"fmt"
+
+	"github.com/MeteorsLiu/mrpc/pkg/queue/internal"
+)
 
 // Queue is a producer wait free but consumer wait queue
 // use cond instead of channel for resizeable queue.
@@ -30,7 +34,8 @@ func (n *Queue[T]) Close() {
 }
 
 func (n *Queue[T]) ForEach(fn func(T) bool) {
-	if n.Len() == 0 {
+	if n.buffers == nil {
+		fmt.Println("empty")
 		return
 	}
 	var next *internal.Element[T]
