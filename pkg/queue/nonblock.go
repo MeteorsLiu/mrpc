@@ -30,6 +30,9 @@ func (n *Queue[T]) Close() {
 }
 
 func (n *Queue[T]) ForEach(fn func(T) bool) {
+	if n.Len() == 0 {
+		return
+	}
 	var next *internal.Element[T]
 	for e := n.buffers.Front(); e != nil; e = next {
 		next = e.Next()
