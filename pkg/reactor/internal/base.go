@@ -24,22 +24,29 @@ type BaseConn struct {
 	closed       bool
 	laddr, raddr net.Addr
 
+	isPinned    bool
 	pinBuffer   *bytes.Buffer
 	nextMinRead int
 
-	onread, ondisconnect reactor.Reactor
+	onread       reactor.Reader
+	ondisconnect reactor.Disconnector
 
 	writePending *queue.Queue[*buffer.PendingBuffer]
 }
 
-func defaultOnAction(_ reactor.Conn, _ []byte, _ error) {}
+func defaultReader(_ reactor.Conn, _ []byte)             {}
+func defaultConnector(_ reactor.Conn, _ []byte, _ error) {}
 
-func NewBaseConn(conn io.ReadWriteCloser, onread, ondisconnect reactor.Reactor) (reactor.Conn, error) {
+func NewBaseConn(
+	conn io.ReadWriteCloser,
+	onread reactor.Reader,
+	ondisconnect reactor.Disconnector,
+) (reactor.Conn, error) {
 	if onread == nil {
-		onread = defaultOnAction
+		onread = defaultReader
 	}
 	if ondisconnect == nil {
-		ondisconnect = defaultOnAction
+		ondisconnect = defaultConnector
 	}
 	b := &BaseConn{
 		onread:       onread,
@@ -76,21 +83,6 @@ func (b *BaseConn) setFD(fd int) {
 	b.fd = fd
 }
 
-func (b *BaseConn) SetPoller(pd reactor.Poller) {
-	b.pd = pd
-}
-
-func (b *BaseConn) FD() int {
-	return b.fd
-}
-
-func (b *BaseConn) eofError(err error) error {
-	if b.closed {
-		return net.ErrClosed
-	}
-	return err
-}
-
 func (b *BaseConn) releasePinBuffer() {
 	if b.pinBuffer != nil {
 		buffer.PutPinBuffer(b.pinBuffer)
@@ -107,13 +99,6 @@ func (b *BaseConn) resetNextRead() {
 	}
 }
 
-func (b *BaseConn) SetNextReadSize(n int) {
-	if n > 0 {
-		b.nextMinRead = n
-		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, n)
-	}
-}
-
 func (b *BaseConn) rawRead(buf []byte) (n int, err error) {
 	for {
 		n, err = syscall.Read(b.fd, buf)
@@ -124,6 +109,9 @@ func (b *BaseConn) rawRead(buf []byte) (n int, err error) {
 			if err == syscall.EAGAIN {
 				err = nil
 			}
+			// when read returns errors, n = -1
+			// filter it out.
+			n = max(n, 0)
 			break
 		}
 	}
@@ -137,21 +125,24 @@ func (b *BaseConn) rawWrite(buf []byte) (n int, err error) {
 			err = io.ErrUnexpectedEOF
 		}
 		if err != syscall.EINTR {
+			n = max(n, 0)
 			break
 		}
 	}
 	return
 }
 
-func (b *BaseConn) writeAllPending() {
+func (b *BaseConn) writeAllPending() (err error) {
 	if b.closed || b.writePending.Len() == 0 {
 		return
 	}
 	b.writePending.ForEach(func(pb *buffer.PendingBuffer) bool {
+		var n int
 	retry:
-		n, err := b.rawWrite(pb.Bytes())
+		n, err = b.rawWrite(pb.Bytes())
 		if err == syscall.EAGAIN && pb.Size() > n {
 			pb.Consume(n)
+			err = nil
 			return false
 		}
 		if pb.Size() > n && err == nil {
@@ -167,6 +158,7 @@ func (b *BaseConn) writeAllPending() {
 		pb.Release(n, err)
 		return true
 	})
+	return
 }
 
 func (b *BaseConn) releasePending() {
@@ -178,8 +170,15 @@ func (b *BaseConn) releasePending() {
 }
 
 func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
+	if b.pinBuffer == nil {
+		return 0, false
+	}
 	nextRead := b.nextMinRead
-	if nextRead == 0 || b.pinBuffer == nil {
+	if nextRead == 0 && b.isPinned {
+		b.pinBuffer.Write(buf)
+		return -1, true
+	}
+	if nextRead == 0 {
 		return 0, false
 	}
 	if nextRead > len(buf) {
@@ -191,18 +190,56 @@ func (b *BaseConn) tryReadPinBuffer(buf []byte) (int, bool) {
 	return n, true
 }
 
-func (b *BaseConn) OnRead(buf []byte, err error) {
+func (b *BaseConn) SetPoller(pd reactor.Poller) {
+	b.pd = pd
+}
+
+func (b *BaseConn) FD() int {
+	return b.fd
+}
+
+func (b *BaseConn) SetNextReadSize(n int) {
+	if n > 0 {
+		b.nextMinRead = n
+		unix.SetsockoptInt(b.fd, unix.SOL_SOCKET, unix.SO_RCVLOWAT, n)
+	}
+}
+
+func (b *BaseConn) Pin() bool {
+	if b.isPinned {
+		return false
+	}
+	b.isPinned = true
+	return true
+}
+
+func (b *BaseConn) Unpin() bool {
+	if b.pinBuffer == nil {
+		return false
+	}
+	b.releasePinBuffer()
+	b.isPinned = false
+	return true
+}
+
+func (b *BaseConn) OnRead(buf []byte) {
 	if n, ok := b.tryReadPinBuffer(buf); ok {
-		b.onread(b, b.pinBuffer.Bytes(), err)
-		b.resetNextRead()
-		buf = buf[n:]
+		b.onread(b, b.pinBuffer.Bytes())
+		if n > 0 {
+			b.resetNextRead()
+			buf = buf[n:]
+		} else {
+			// when n <= 0, it means user pin the buffer
+			// truncate the input buffer to prevent executing OnRead again.
+			buf = buf[:0]
+		}
 	}
 	if b.pinBuffer != nil || len(buf) == 0 {
 		return
 	}
-	b.onread(b, buf, b.eofError(err))
+	b.onread(b, buf)
 
-	if b.nextMinRead > 0 {
+	if b.isPinned || b.nextMinRead > 0 {
 		b.pinBuffer = buffer.GetPinBuffer()
 		b.pinBuffer.Write(buf)
 	}
@@ -210,6 +247,9 @@ func (b *BaseConn) OnRead(buf []byte, err error) {
 
 func (b *BaseConn) OnDisconnect(buf []byte, err error) {
 	if b.pinBuffer != nil {
+		if len(buf) > 0 {
+			b.pinBuffer.Write(buf)
+		}
 		buf = b.pinBuffer.Bytes()
 		defer b.releasePinBuffer()
 	}

@@ -7,6 +7,9 @@ type Conn interface {
 	FD() int
 	SetNextReadSize(n int)
 	SetPoller(pd Poller)
+	Pin() bool
+	Unpin() bool
 }
 
-type Reactor func(Conn, []byte, error)
+type Reader func(Conn, []byte)
+type Disconnector func(Conn, []byte, error)

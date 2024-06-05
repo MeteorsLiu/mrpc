@@ -10,7 +10,26 @@ import (
 	"time"
 
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
+	"golang.org/x/sys/unix"
 )
+
+func writeTest(conn net.Conn) {
+	defer conn.Close()
+
+	buf := make([]byte, 32768)
+	conn.(*net.TCPConn).SetReadBuffer(1)
+	pos := 0
+	for {
+		n, err := conn.Read(buf[pos:])
+		if err != nil {
+			log.Println(string(buf[:pos]))
+			return
+		}
+		pos += n
+		time.Sleep(time.Second)
+		log.Println("recv: ", string(buf[:pos]))
+	}
+}
 
 func helloWorldTest(conn net.Conn) {
 	toSend := []byte("Hello")
@@ -52,7 +71,7 @@ func TestBaseRead(t *testing.T) {
 	}
 	hello := false
 	wg.Add(1)
-	_, err = NewBaseConn(cn, func(c reactor.Conn, b []byte, err error) {
+	_, err = NewBaseConn(cn, func(c reactor.Conn, b []byte) {
 		//log.Println("recv: ", string(b))
 		if len(b) < 5 {
 			c.SetNextReadSize(5 - len(b))
@@ -78,5 +97,36 @@ func TestBaseRead(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	wg.Wait()
+}
+
+func TestBaseWrite(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go newListener(&wg, writeTest)
+	wg.Wait()
+
+	cn, err := net.Dial("tcp", "127.0.0.1:9999")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	wg.Add(1)
+	base, err := NewBaseConn(cn, nil, func(c reactor.Conn, b []byte, err error) {
+		wg.Done()
+	})
+
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	unix.SetsockoptInt(base.FD(), unix.SOL_SOCKET, unix.SO_SNDBUF, 1)
+
+	// wrong example, only for testing.
+	// MUST NOT call Write() or Close() directly without wrapper.
+	base.Write([]byte("HelloWorld"))
+	base.Close()
 	wg.Wait()
 }

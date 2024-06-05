@@ -110,22 +110,32 @@ func (p *epoll) run() {
 		for i := 0; i < n; i++ {
 			ev := events[i]
 			conn := *(**BaseConn)(unsafe.Pointer(&ev.Data))
-			// Order: If there's something to read, read it.
-			// Then, write all the pending buffers.
+			// Order: If there's something to write, write it(because onread may call Write)
+			// Then, read it.
 			// Finally, handle the disconnected error.
 			var er error
+			if ev.Events&syscall.EPOLLOUT != 0 {
+				er = conn.writeAllPending()
+			}
+
 			if ev.Events&syscall.EPOLLIN != 0 {
-				n, er := conn.rawRead(p.buf)
-				if er == nil {
-					conn.OnRead(p.buf[:n], er)
+				n, er = conn.rawRead(p.buf)
+				// ignore error, if there's something to read
+				// read it.
+				// the error will be handle in OnDisconnect
+				if n > 0 {
+					conn.OnRead(p.buf[:n])
 				}
 			}
 
-			if ev.Events&syscall.EPOLLOUT != 0 {
-				conn.writeAllPending()
-			}
-
-			if ev.Events&(syscall.EPOLLRDHUP|syscall.EPOLLHUP|syscall.EPOLLERR) != 0 {
+			if er != nil || ev.Events&(syscall.EPOLLRDHUP|syscall.EPOLLHUP|syscall.EPOLLERR) != 0 {
+				if er == nil {
+					n, er = conn.rawRead(p.buf)
+					if n > 0 {
+						conn.OnDisconnect(p.buf[:n], er)
+						continue
+					}
+				}
 				conn.OnDisconnect(nil, er)
 			}
 		}
