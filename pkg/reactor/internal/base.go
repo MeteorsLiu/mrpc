@@ -129,6 +129,11 @@ func (b *BaseConn) rawWrite(buf []byte) (nw int, err error) {
 		if err != nil && err != syscall.EINTR {
 			break
 		}
+		// special case, n == 0 and error == nil
+		if n == 0 {
+			err = io.ErrUnexpectedEOF
+			break
+		}
 	}
 	return
 }
