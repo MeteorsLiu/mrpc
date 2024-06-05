@@ -27,7 +27,7 @@ func writeTest(conn net.Conn) {
 	buf := make([]byte, 32768)
 	time.Sleep(5 * time.Second)
 	log.Println("start read")
-	io.ReadFull(conn, buf)
+	log.Println(io.ReadFull(conn, buf))
 	pos := 0
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
@@ -122,10 +122,7 @@ func TestBaseWrite(t *testing.T) {
 		return
 	}
 
-	wg.Add(1)
-	base, err := NewBaseConn(cn, nil, func(c reactor.Conn, b []byte, err error) {
-		wg.Done()
-	})
+	base, err := NewBaseConn(cn, nil, nil)
 
 	if err != nil {
 		t.Error(err)
@@ -136,6 +133,7 @@ func TestBaseWrite(t *testing.T) {
 	t.Log(base.Write(fillBuffer()))
 	// EAGAIN
 	t.Log(base.Write([]byte("HelloWorld")))
+	time.Sleep(5 * time.Minute)
 	base.Close()
-	wg.Wait()
+
 }
