@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
+	"golang.org/x/sys/unix"
 )
 
 func fillBuffer() []byte {
@@ -121,13 +122,14 @@ func TestBaseWrite(t *testing.T) {
 		t.Error(err)
 		return
 	}
-
 	base, err := NewBaseConn(cn, nil, nil)
 
 	if err != nil {
 		t.Error(err)
 		return
 	}
+	unix.SetsockoptInt(base.FD(), unix.SOL_SOCKET, unix.SO_SNDBUF, 10)
+
 	// wrong example, only for testing.
 	// MUST NOT call Write() or Close() directly without wrapper.
 	t.Log(base.Write(fillBuffer()))
