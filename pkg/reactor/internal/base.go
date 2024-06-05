@@ -118,14 +118,15 @@ func (b *BaseConn) rawRead(buf []byte) (n int, err error) {
 	return
 }
 
-func (b *BaseConn) rawWrite(buf []byte) (n int, err error) {
-	for {
-		n, err = syscall.Write(b.fd, buf)
-		if n == 0 && err == nil {
-			err = io.ErrUnexpectedEOF
+func (b *BaseConn) rawWrite(buf []byte) (nw int, err error) {
+	var n int
+	for nw < len(buf) {
+		n, err = syscall.Write(b.fd, buf[nw:])
+		if n > 0 {
+			nw += n
 		}
-		if err != syscall.EINTR {
-			n = max(n, 0)
+		// ignore EINTR
+		if err != nil && err != syscall.EINTR {
 			break
 		}
 	}
