@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -13,6 +14,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func fillBuffer() []byte {
+	buf := make([]byte, 32768)
+	for i := range buf {
+		buf[i] = byte(i)
+	}
+	return buf
+}
+
 func writeTest(conn net.Conn) {
 	defer conn.Close()
 
@@ -21,6 +30,9 @@ func writeTest(conn net.Conn) {
 	ctl.Control(func(fd uintptr) {
 		unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 1)
 	})
+	time.Sleep(5 * time.Second)
+	log.Println("start read")
+	io.ReadFull(conn, buf)
 	pos := 0
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
@@ -129,6 +141,8 @@ func TestBaseWrite(t *testing.T) {
 
 	// wrong example, only for testing.
 	// MUST NOT call Write() or Close() directly without wrapper.
+	t.Log(base.Write(fillBuffer()))
+	// EAGAIN
 	t.Log(base.Write([]byte("HelloWorld")))
 	base.Close()
 	wg.Wait()
