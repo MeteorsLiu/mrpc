@@ -28,7 +28,13 @@ func writeTest(conn net.Conn) {
 	buf := make([]byte, 32768)
 	time.Sleep(5 * time.Second)
 	log.Println("start read")
-	io.ReadFull(conn, buf[:32768-20])
+	io.ReadFull(conn, buf[:32768])
+
+	for i, b := range buf {
+		if b != byte(i) {
+			log.Printf("wrong buffer: %d %d", i, b)
+		}
+	}
 	pos := 0
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
