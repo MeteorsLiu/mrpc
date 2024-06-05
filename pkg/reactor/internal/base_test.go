@@ -18,6 +18,7 @@ func writeTest(conn net.Conn) {
 
 	buf := make([]byte, 32768)
 	conn.(*net.TCPConn).SetReadBuffer(1)
+	conn.(*net.TCPConn).SetWriteBuffer(1)
 	pos := 0
 	for {
 		n, err := conn.Read(buf[pos:])
@@ -126,7 +127,7 @@ func TestBaseWrite(t *testing.T) {
 
 	// wrong example, only for testing.
 	// MUST NOT call Write() or Close() directly without wrapper.
-	base.Write([]byte("HelloWorld"))
+	t.Log(base.Write([]byte("HelloWorld")))
 	base.Close()
 	wg.Wait()
 }
