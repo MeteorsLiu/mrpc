@@ -147,7 +147,6 @@ func (b *BaseConn) writeAllPending() (err error) {
 		var n int
 	retry:
 		n, err = b.rawWrite(pb.Bytes())
-		log.Println(n, err)
 		if err == syscall.EAGAIN && pb.Size() > n {
 			pb.Consume(n)
 			err = nil
@@ -287,6 +286,7 @@ func (b *BaseConn) Write(buf []byte) (n int, err error) {
 	}
 	n, err = b.rawWrite(buf)
 	if err == syscall.EAGAIN && len(buf) > n {
+		log.Println("push to queue")
 		b.writePending.Push(buffer.NewPendingBuffer(buf[n:]))
 	}
 	return
