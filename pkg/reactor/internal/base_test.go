@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
-	"golang.org/x/sys/unix"
 )
 
 func fillBuffer() []byte {
@@ -26,10 +25,6 @@ func writeTest(conn net.Conn) {
 	defer conn.Close()
 
 	buf := make([]byte, 32768)
-	ctl, _ := conn.(*net.TCPConn).SyscallConn()
-	ctl.Control(func(fd uintptr) {
-		unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 1)
-	})
 	time.Sleep(5 * time.Second)
 	log.Println("start read")
 	io.ReadFull(conn, buf)
@@ -136,9 +131,6 @@ func TestBaseWrite(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	unix.SetsockoptInt(base.FD(), unix.SOL_SOCKET, unix.SO_SNDBUFFORCE, 1)
-	unix.SetsockoptInt(base.FD(), unix.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT, 1)
-
 	// wrong example, only for testing.
 	// MUST NOT call Write() or Close() directly without wrapper.
 	t.Log(base.Write(fillBuffer()))
