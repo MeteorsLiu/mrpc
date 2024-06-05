@@ -147,6 +147,8 @@ func (b *BaseConn) writeAllPending() (err error) {
 	if b.closed.Load() || b.writePending.Len() == 0 {
 		return
 	}
+	b.wmu.RLock()
+	defer b.wmu.RUnlock()
 	b.writePending.ForEach(func(pb *buffer.PendingBuffer) bool {
 		var n int
 		n, err = b.rawWrite(pb.Bytes())
