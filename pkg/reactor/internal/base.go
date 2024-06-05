@@ -5,9 +5,10 @@ package internal
 import (
 	"bytes"
 	"io"
-	"log"
 	"net"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -22,7 +23,10 @@ type BaseConn struct {
 	fd int
 	pd reactor.Poller
 
-	closed       bool
+	wmu sync.RWMutex
+
+	closed       atomic.Bool
+	closeOnce    sync.Once
 	laddr, raddr net.Addr
 
 	isPinned    bool
@@ -42,7 +46,7 @@ func NewBaseConn(
 	conn io.ReadWriteCloser,
 	onread reactor.Reader,
 	ondisconnect reactor.Disconnector,
-) (reactor.Conn, error) {
+) (*BaseConn, error) {
 	if onread == nil {
 		onread = defaultReader
 	}
@@ -140,24 +144,16 @@ func (b *BaseConn) rawWrite(buf []byte) (nw int, err error) {
 }
 
 func (b *BaseConn) writeAllPending() (err error) {
-	if b.closed || b.writePending.Len() == 0 {
+	if b.closed.Load() || b.writePending.Len() == 0 {
 		return
 	}
 	b.writePending.ForEach(func(pb *buffer.PendingBuffer) bool {
 		var n int
-	retry:
 		n, err = b.rawWrite(pb.Bytes())
-		log.Println(n, err)
 		if err == syscall.EAGAIN && pb.Size() > n {
 			pb.Consume(n)
 			err = nil
 			return false
-		}
-		if pb.Size() > n && err == nil {
-			// will this cause?
-			// retry
-			pb.Consume(n)
-			goto retry
 		}
 		// n == size, but with EAGAIN.
 		if err == syscall.EAGAIN {
@@ -261,7 +257,7 @@ func (b *BaseConn) OnDisconnect(buf []byte, err error) {
 		buf = b.pinBuffer.Bytes()
 		defer b.releasePinBuffer()
 	}
-	if !b.closed {
+	if !b.closed.Load() {
 		b.ondisconnect(b, buf, err)
 	}
 	b.Close()
@@ -276,10 +272,17 @@ func (b *BaseConn) Read(buf []byte) (n int, err error) {
 // Write can be made to time out and return an error after a fixed
 // time limit; see SetDeadline and SetWriteDeadline.
 func (b *BaseConn) Write(buf []byte) (n int, err error) {
-	if b.closed {
+	if b.closed.Load() {
 		err = net.ErrClosed
 		return
 	}
+	// this is not a typo
+	// Write() will be only called in epoll thread,
+	// there's no race, the rwlock is for wrapper.
+	// wrapper may write concurrently.
+	b.wmu.RLock()
+	defer b.wmu.RUnlock()
+
 	if b.writePending.Len() > 0 {
 		// guarantee writing order
 		b.writePending.Push(buffer.NewPendingBuffer(buf))
@@ -292,21 +295,45 @@ func (b *BaseConn) Write(buf []byte) (n int, err error) {
 	return
 }
 
+// For wrapper
+func (b *BaseConn) WriteBuffer(buf []byte) (n int, pb *buffer.PendingBuffer, err error) {
+	if b.closed.Load() {
+		err = net.ErrClosed
+		return
+	}
+	b.wmu.Lock()
+	defer b.wmu.Unlock()
+
+	if b.writePending.Len() > 0 {
+		// guarantee writing order
+		pb = buffer.NewPendingBuffer(buf)
+		b.writePending.Push(pb)
+		return
+	}
+	n, err = b.rawWrite(buf)
+	if err == syscall.EAGAIN && len(buf) > n {
+		pb = buffer.NewPendingBuffer(buf[n:])
+		b.writePending.Push(pb)
+	}
+	return
+}
+
 // Close closes the connection.
 // Any blocked Read or Write operations will be unblocked and return errors.
 func (b *BaseConn) Close() error {
-	if b.closed {
+	if b.closed.Load() {
 		return net.ErrClosed
 	}
 	var err error
-
-	b.releasePending()
-	runtime.SetFinalizer(b, nil)
-	if b.pd != nil {
-		err = b.pd.Close(b)
-	}
-	syscall.Close(b.fd)
-	b.closed = true
+	b.closeOnce.Do(func() {
+		b.releasePending()
+		runtime.SetFinalizer(b, nil)
+		if b.pd != nil {
+			err = b.pd.Close(b)
+		}
+		syscall.Close(b.fd)
+		b.closed.Store(true)
+	})
 	return err
 }
 

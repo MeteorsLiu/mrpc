@@ -3,13 +3,17 @@
 package internal
 
 import (
-	"net"
+	"io"
 
 	"github.com/MeteorsLiu/mrpc/pkg/reactor"
 )
 
 type BaseConn struct{}
 
-func NewBaseConn(conn net.Conn) (reactor.Conn, error) {
+func NewBaseConn(
+	conn io.ReadWriteCloser,
+	onread reactor.Reader,
+	ondisconnect reactor.Disconnector,
+) (*BaseConn, error) {
 	return nil, reactor.ErrPlatformUnsupport
 }

@@ -39,12 +39,12 @@ func writeTest(conn net.Conn) {
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
 		if err != nil {
-			log.Println(buf[:pos])
+			log.Println(string(buf[:pos]))
 			return
 		}
 		pos += n
 		time.Sleep(time.Second)
-		log.Println("recv: ", buf[:pos])
+		//log.Println("recv: ", string(buf[:pos]))
 	}
 }
 
@@ -117,6 +117,14 @@ func TestBaseRead(t *testing.T) {
 	wg.Wait()
 }
 
+// How to test this
+// SO_SNDBUF cannot modify the tcp max buffer size
+// so you have to change it manually
+// net.core.rmem_max = 32768 (Test Size)
+// net.core.wmem_max = 32768 (Test Size)
+// net.ipv4.tcp_rmem = 4096 16384 32768
+// net.ipv4.tcp_wmem = 4096 16384 32768
+// commonly, it will output HelloWorld only, that means it works.
 func TestBaseWrite(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
