@@ -124,6 +124,7 @@ func TestBaseWrite(t *testing.T) {
 	}
 
 	unix.SetsockoptInt(base.FD(), unix.SOL_SOCKET, unix.SO_SNDBUF, 1)
+	unix.SetsockoptInt(base.FD(), unix.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT, 1)
 
 	// wrong example, only for testing.
 	// MUST NOT call Write() or Close() directly without wrapper.
