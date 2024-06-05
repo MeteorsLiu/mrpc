@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -26,16 +27,17 @@ func writeTest(conn net.Conn) {
 	buf := make([]byte, 32768)
 	time.Sleep(5 * time.Second)
 	log.Println("start read")
+	log.Println(io.ReadFull(conn, buf[:32768-10]))
 	pos := 0
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
 		if err != nil {
-			log.Println(buf[:pos])
+			log.Println(string(buf[:pos]))
 			return
 		}
 		pos += n
 		time.Sleep(time.Second)
-		log.Println("recv: ", buf[:pos])
+		log.Println("recv: ", string(buf[:pos]))
 	}
 }
 
