@@ -21,7 +21,7 @@ func writeTest(conn net.Conn) {
 	conn.(*net.TCPConn).SetWriteBuffer(1)
 	pos := 0
 	for {
-		n, err := conn.Read(buf[pos:])
+		n, err := conn.Read(buf[pos : pos+1])
 		if err != nil {
 			log.Println(string(buf[:pos]))
 			return
