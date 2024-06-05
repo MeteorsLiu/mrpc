@@ -5,6 +5,7 @@ package internal
 import (
 	"bytes"
 	"io"
+	"log"
 	"net"
 	"runtime"
 	"syscall"
@@ -146,6 +147,7 @@ func (b *BaseConn) writeAllPending() (err error) {
 		var n int
 	retry:
 		n, err = b.rawWrite(pb.Bytes())
+		log.Println(n, err)
 		if err == syscall.EAGAIN && pb.Size() > n {
 			pb.Consume(n)
 			err = nil
