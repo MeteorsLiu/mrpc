@@ -17,8 +17,10 @@ func writeTest(conn net.Conn) {
 	defer conn.Close()
 
 	buf := make([]byte, 32768)
-	conn.(*net.TCPConn).SetReadBuffer(1)
-	conn.(*net.TCPConn).SetWriteBuffer(1)
+	ctl, _ := conn.(*net.TCPConn).SyscallConn()
+	ctl.Control(func(fd uintptr) {
+		unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUFFORCE, 1)
+	})
 	pos := 0
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
@@ -122,8 +124,7 @@ func TestBaseWrite(t *testing.T) {
 		t.Error(err)
 		return
 	}
-
-	unix.SetsockoptInt(base.FD(), unix.SOL_SOCKET, unix.SO_SNDBUF, 1)
+	unix.SetsockoptInt(base.FD(), unix.SOL_SOCKET, unix.SO_SNDBUFFORCE, 1)
 	unix.SetsockoptInt(base.FD(), unix.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT, 1)
 
 	// wrong example, only for testing.
