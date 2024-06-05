@@ -30,12 +30,12 @@ func writeTest(conn net.Conn) {
 	for {
 		n, err := conn.Read(buf[pos : pos+1])
 		if err != nil {
-			log.Println(string(buf[:pos]))
+			log.Println(buf[:pos])
 			return
 		}
 		pos += n
 		time.Sleep(time.Second)
-		log.Println("recv: ", string(buf[:pos]))
+		log.Println("recv: ", buf[:pos])
 	}
 }
 
