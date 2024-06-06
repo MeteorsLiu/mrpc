@@ -245,7 +245,10 @@ func (b *BaseConn) OnRead(buf []byte) {
 	}
 	b.onread(b, buf)
 
-	if (b.isPinned || b.nextMinRead > 0) && b.pinBuffer == nil {
+	if b.isPinned || b.nextMinRead > 0 {
+		if b.pinBuffer == nil {
+			b.pinBuffer = buffer.GetPinBuffer()
+		}
 		b.pinBuffer.Write(buf)
 	}
 }
