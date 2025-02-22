@@ -1,4 +1,4 @@
-# Meteor RPC
+# Meteor RPC[WIP]
 
 ## Design
 
@@ -22,4 +22,13 @@ Reason:
 2. How to pause or resume coroutine? In C++, these actions are compiled to static machine code, but we can't.
 3. We have to rewrite all network stack for stackless coroutine, that's really impossible.
 
+### Shortage of `Reactor`
+1. Single thread, bad concurrency
+2. Still need to rewrite parts of network library in Go
 
+First question is solved by `thread per core` model.
+Second...No idea for now, so this project is still in progress, because rewriting is complicated and meaningless.
+
+
+### Plan
+I try to solve that problem in other ways like rebuild a Go runtime, but that's too hard. 
